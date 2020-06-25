@@ -39,7 +39,7 @@ object TimeAndWindow {
     // 4.2 将流转换成表，定义时间字段：Event Time，把timestamp转换成Event Time，直接调用rowtime
     val sensorTable: Table = tableEnv.fromDataStream(dataStream, 'id, 'temperature, 'timestamp.rowtime as 'ts)
 
-    // 5. Table API
+    // 5. Table API（目前支持程度不如SQL）
     // 5.1 Group Window聚合操作
     val aggTable: Table = sensorTable
       .window(Tumble over 10.seconds on 'ts as 'tw)
@@ -57,14 +57,15 @@ object TimeAndWindow {
       .select('id, 'ts, 'id.count over 'ow, 'temperature.avg over 'ow)
     overTable.toAppendStream[Row].print("over result")
 
-    // 6. SQL操作
+    // 6. SQL
     // 6.1 Group Window SQL聚合操作
     tableEnv.createTemporaryView("sensor", sensorTable)
     val aggSQLTable: Table = tableEnv.sqlQuery(
       """
         | select
         |   id
-        |   ,count(id), hop_end(ts, interval '4' second, interval '10' second)
+        |   ,count(id)
+        |   ,hop_end(ts, interval '4' second, interval '10' second)
         | from sensor
         | group by
         |   id
