@@ -10,6 +10,9 @@ import org.apache.flink.table.api.scala._
 import org.apache.flink.table.functions.AggregateFunction
 import org.apache.flink.types.Row
 
+/**
+ * N to 1
+ */
 object AggregateFunctionExample {
   def main(args: Array[String]): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
@@ -72,6 +75,7 @@ class AvgTemperature extends AggregateFunction[Double, AvgTemperatureACC] {
 
 /**
  * 专门定义一个聚合函数的状态类，用于保存聚合状态(sum，count)
+ * N行数据输入，输出1行
  **/
 class AvgTemperatureACC {
   var sum: Double = 0.0

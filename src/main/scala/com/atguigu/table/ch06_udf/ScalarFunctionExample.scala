@@ -10,6 +10,9 @@ import org.apache.flink.table.api.scala._
 import org.apache.flink.table.functions.ScalarFunction
 import org.apache.flink.types.Row
 
+/**
+ * 1: 1
+ */
 object ScalarFunctionExample {
   def main(args: Array[String]): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
@@ -61,6 +64,7 @@ object ScalarFunctionExample {
 
 /**
  * 自定义求HashCode的标量函数
+ * 1行数据输入，结果1行
  */
 class HashCode(factor: Double) extends ScalarFunction {
   // 必须实现eval方法，但是也没写在ScalarFunction的抽象类里

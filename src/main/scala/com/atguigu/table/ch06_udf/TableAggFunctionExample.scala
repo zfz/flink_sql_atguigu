@@ -7,13 +7,14 @@ import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.table.api.Table
 import org.apache.flink.table.api.scala._
-import org.apache.flink.table.functions.TableFunction
+import org.apache.flink.table.functions.TableAggregateFunction
 import org.apache.flink.types.Row
+import org.apache.flink.util.Collector
 
 /**
- * 1: N
+ * N: M
  */
-object TableFunctionExample {
+object TableAggFunctionExample {
   def main(args: Array[String]): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(1)
@@ -40,40 +41,54 @@ object TableFunctionExample {
     // 3. 将流转换成表，直接定义时间字段
     val sensorTable: Table = tableEnv.fromDataStream(dataStream, 'id, 'temperature, 'timestamp.rowtime as 'ts)
 
-    // 4. 先创建一个UDF对象
-    val split = new Split("_")
+    // 4. 创建一个表聚合函数的实例
+    val top2Temperature = new Top2Temperature()
 
-    // 5.1 Table API调用
+    // 5. Table API调用
     val resultTable: Table = sensorTable
-      // 侧向连接，应用TableFunction，也可以使用leftOuterJoinLateral
-      .joinLateral(split('id) as ('word, 'length))
-      .select('id, 'ts, 'word, 'length)
+      .groupBy('id)
+      .flatAggregate(top2Temperature('temperature) as ('temperature, 'rank))
+      .select('id, 'temperature, 'rank)
 
-    // 5.2 SQL调用
-    tableEnv.createTemporaryView("sensor", sensorTable)
-    tableEnv.registerFunction("split", split)
-    val resultSQLTable = tableEnv.sqlQuery(
-      """
-        | select id, ts, word, length
-        | from sensor, lateral table(split(id)) as splitid(word, length)
-      """.stripMargin)
+    resultTable.toRetractStream[Row].print("result")
 
-    resultTable.toAppendStream[Row].print("result")
-    resultSQLTable.toAppendStream[Row].print("sql result")
-
-    env.execute("UDTF")
+    env.execute("UDTAF")
   }
 }
 
 /**
- * 自定义TableFunction，实现分割字符串并统计长度(word, length)
- * 一行数据拆出多行
+ * 自定义状态类
  */
-class Split(separator: String) extends TableFunction[(String, Int)] {
-  // 返回值不能为Unit，使用collector收集数据
-  def eval(value: String): Unit = {
-    value.split(separator).foreach(
-      word => collect(word, word.length)
-    )
+class Top2TemperatureAcc {
+  var first: Double = Double.MinValue
+  var second: Double = Double.MinValue
+}
+
+/**
+ * 自定义表聚合函数，实现Top2功能，输出（temperature，rank）
+ * T 返回类型
+ * ACC 聚合类型
+ * 输入类型在eval中指定
+ * N行数据输入，输出M行
+ */
+class Top2Temperature() extends TableAggregateFunction[(Double, Int), Top2TemperatureAcc] {
+  // 初始化状态
+  override def createAccumulator(): Top2TemperatureAcc = new Top2TemperatureAcc()
+
+  // 每来一个数据后，聚合计算的操作
+  def accumulate(acc: Top2TemperatureAcc, temperature: Double): Unit = {
+    // 将当前温度值，跟状态中的最高温和第二高温比较，如果大的话就替换
+    if (temperature > acc.first) {
+      acc.second = acc.first
+      acc.first = temperature
+    } else if (temperature > acc.second) {
+      acc.second = temperature
+    }
+  }
+
+  // 实现一个输出数据的方法，写入结果表中
+  def emitValue(acc: Top2TemperatureAcc, out: Collector[(Double, Int)]): Unit = {
+    out.collect(acc.first, 1)
+    out.collect(acc.second, 2)
   }
 }
